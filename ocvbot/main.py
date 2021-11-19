@@ -381,19 +381,36 @@ def smith(bar: str, item: str, location: str, loops: int = 10000):
         misc.session_duration(human_readable=True)
         misc.sleep_rand_roll(chance_range=(20, 30))
 
+def woodcut(loops: int = 10000):
+
+    log = "./needles/items/oak_log.png"
+
+    for _ in range(loops):
+        # Grab reference of the pixel first. 
+        tree_coords = skills.Woodcutting(log=log).find_tree()
+        # Try and click the tree
+        while skills.Woodcutting(log=log).find_tree() != False:
+            tree_clicked = skills.Woodcutting(log=log).cut_tree(tree_coords=tree_coords)
+            # if successful give it a time to chop, and check again
+            if tree_clicked != False:
+                misc.sleep_rand(0,20000)
+
+
 
 def test():
     banking.deposit_inventory()
 
 
-# TODO: Add basic firemaking script that starts at a bank booth and
-#   creates 27 fires, all in a straight line, then returns to the booth.
 
-# TODO: Add oak woodcutting script that waits by an oak tree, clicks on
-#   it when it appears, and empties inventory when full -- super simple.
 
-# TODO: Possible location for starting a fishing script where the
-#  "fishing tiles" don't change much is fly fishing at barbarian village.
+    # TODO: Add basic firemaking script that starts at a bank booth and
+    #   creates 27 fires, all in a straight line, then returns to the booth.
+
+    # TODO: Add oak woodcutting script that waits by an oak tree, clicks on
+    #   it when it appears, and empties inventory when full -- super simple.
+
+    # TODO: Possible location for starting a fishing script where the
+    #  "fishing tiles" don't change much is fly fishing at barbarian village.
 
 
 script = start.config["main"]["script"]
@@ -428,6 +445,10 @@ def main():
             location=start.config[script]["location"],
         )
 
+    elif script == "woodcut":
+        woodcut(
+        )
+        
     elif script == "test":
         test()
 

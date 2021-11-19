@@ -576,3 +576,82 @@ class Smithing:
                 self.smith_items()
 
         return False
+
+
+class Woodcutting:
+    def __init__(
+        self,
+        log: str,
+    ):
+        self.log = log
+
+    def _is_inventory_full(self) -> bool:
+        """
+        Helper function to determine if the player's inventory is full. Looks
+        for a "your inventory is too full to hold any more resources" chat
+        message.
+
+        Returns:
+          Returns True if the player's inventory is full,
+          returns False otherwise.
+        """
+        log.debug("Checking for full inventory.")
+
+        behavior.open_side_stone("inventory")
+        inventory_full = vis.Vision(
+            region=vis.CHAT_MENU,
+            loop_num=3,
+            needle="./needles/chat-menu/woodcutting-inventory-full.png",
+            conf=0.85,
+        ).wait_for_needle()
+        if inventory_full is True:
+            return True
+        log.debug("Inventory is not full.")
+        return False
+
+    # Is going to look for a tree, find the coordinates, and send back a needle for the tree.
+    def find_tree(self):
+        if self._is_inventory_full() is True:
+            log.info("Inventory is full!")
+            self.drop_inv_log()
+
+        # Some of the colors from oak trees
+        colors = [(96, 120, 48), (137, 146, 97),
+                  (165, 172, 120), (145, 158, 86)]
+
+        # Look for tree pixel
+        tree_coords = vis.Vision(
+            region=vis.CLIENT, needle='').find_pixel_by_color(colors)
+
+        # Stop script if we don't see pixel
+        if tree_coords is False:
+            log.info("No trees in area, stopping script.")
+            return False
+        log.info("Tree spotted")
+
+        # inputs.Mouse(region=tree_coords).click_coord()
+
+        return tree_coords
+
+    # This function iterates over the tree needle to cut it
+
+    def cut_tree(self, tree_coords) -> bool:
+        tree_coords = self.find_tree()
+        while not tree_coords:
+            misc.sleep_rand(0,2000)
+
+        tree_clicked = inputs.Mouse(region=tree_coords).click_coord()
+
+        return tree_clicked
+        
+
+    def drop_inv_log(self) -> None:
+
+        logs_in_inventory = vis.Vision(
+            region=vis.INV, needle=self.log).count_needles()
+        log.info("logs found: %s", logs_in_inventory)
+
+        if logs_in_inventory >= 1:
+            behavior.drop_item(item=self.log)
+        else:
+            log.info("Could not find any logs to drop!")

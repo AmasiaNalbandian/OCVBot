@@ -170,6 +170,25 @@ class Vision:
         self.loop_num = loop_num
         self.loop_sleep_range = loop_sleep_range
 
+
+    def find_pixel_by_color(self, colors):
+
+        # 1. Grab a reference of the game screen as a screenshot  
+        # TODO: Move this into self so that we are provided the screenshot to  
+        needle = pag.screenshot(region=self.region)   
+        pixel_coords = None
+        # 2. In that screenshot, search w and h to find pixel matching that color and click it.
+        for x in range(needle.width):
+            for y in range(needle.height):
+                if needle.getpixel((x, y)) in colors:
+                    pixel_coords = (GAME_SCREEN[0] + x, GAME_SCREEN[1] + y, 5, 5)    # Stored pixel coords
+                    # log.info("pixel color: %s", needle.getpixel((x,y)))
+                    # log.info("pixel found %s,", pixel_coords)
+                    
+                    return pixel_coords
+        return False
+
+
     # TODO: Add examples of usage.
     def find_needle(self):
         """
