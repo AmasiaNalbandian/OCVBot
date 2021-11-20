@@ -174,7 +174,6 @@ class Vision:
     def find_pixel_by_color(self, colors):
 
         # 1. Grab a reference of the game screen as a screenshot  
-        # TODO: Move this into self so that we are provided the screenshot to  
         needle = pag.screenshot(region=self.region)   
         pixel_coords = None
         # 2. In that screenshot, search w and h to find pixel matching that color and click it.
