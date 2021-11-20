@@ -175,15 +175,18 @@ class Magic:
 
     def _select_spell(self) -> None:
         """
-        Activate the desired spell.
+        Helper function that activates the desired spell.
+
+        Returns:
+            Returns when the desired spell has been selected.
 
         Raises:
-            Raises an exception if the spell could not be found.
+            Raises start.NeedleError if the spell could not be found.
 
         """
         for _ in range(5):
             spell_available = vis.Vision(
-                needle=self.spell, region=vis.INV, loop_num=30
+                needle=self.spell, region=vis.INV, loop_num=2
             ).click_needle(
                 sleep_range=(
                     50,
@@ -197,20 +200,23 @@ class Magic:
                 behavior.open_side_stone("spellbook")
             else:
                 return
-        raise Exception("Could not select spell!")
+        raise start.NeedleError("Could not select spell!")
 
     def _select_target(self) -> None:
         """
-        Attempt to find the target to cast the spell on. Can be either a
-        monster in the game world or an item in the inventory.
+        Helper function to select a spell's target. Can be either a monster in
+        the game world or an item in the inventory.
+
+        Returns:
+            Returns when the desired target has been selected.
 
         Raises:
-            Raises an exception if the target could not be found.
+            Raises start.NeedleError if the target could not be found.
 
         """
         for _ in range(5):
             target = vis.Vision(
-                needle=self.target, region=self.region, loop_num=5, conf=self.conf
+                needle=self.target, region=self.region, loop_num=2, conf=self.conf
             ).click_needle(
                 sleep_range=(
                     10,
@@ -226,11 +232,11 @@ class Magic:
                     behavior.open_side_stone("inventory")
             else:
                 return
-        raise Exception("Could not find target!")
+        raise start.NeedleError("Could not find target!")
 
     def cast_spell(self) -> None:
         """
-        Cast a spell at a target.
+        Main function of the Magic class to cast a spell at a target.
 
         Returns:
             Returns once spell has been cast.
@@ -330,7 +336,7 @@ class Mining:
         log.debug("Inventory is not full.")
         return False
 
-    def _mine_rock(self, rock_full, rock_empty) -> None:
+    def _mine_rock(self, rock_full_needle, rock_empty_needle) -> None:
         """
         Helper function to mine a given rock until it's been depleted.
 
@@ -345,33 +351,36 @@ class Mining:
         # If rock is full, begin mining it.
         # Move the mouse away from the rock so it doesn't interfere with
         #   matching the needle.
-        rock_full_click = vis.Vision(
+        rock_full = vis.Vision(
             region=vis.GAME_SCREEN,
             loop_num=1,
-            needle=rock_full,
+            needle=rock_full_needle,
             conf=self.conf,
         ).click_needle(move_away=True)
 
-        if rock_full_click is False:
+        if rock_full is False:
             raise start.RockEmpty("Rock is already empty!")
 
-        if self._is_inventory_full() is True:
-            raise start.InventoryFull("Inventory is full!")
+        # Wait until the rock is empty or the inventory is full.
+        # Check for both at the same time since some rocks (e.g. in Camdozaal Mine)
+        #   provide multiple ore and may create a full inventory before the rock
+        #   is empty.
+        for _ in range(20):
 
-        # Wait until the rock is empty.
-        rock_empty = vis.Vision(
-            region=vis.GAME_SCREEN,
-            loop_num=50,
-            conf=self.conf,
-            needle=rock_empty,
-            loop_sleep_range=(100, 600),
-        ).wait_for_needle()
-        if rock_empty is True:
-            log.info("Rock has been mined.")
-            return
-        # If a timeout has occured, check if the inventory is full.
-        if self._is_inventory_full() is True:
-            raise start.InventoryFull("Inventory is full!")
+            if self._is_inventory_full() is True:
+                raise start.InventoryFull("Inventory is full!")
+
+            rock_empty = vis.Vision(
+                region=vis.GAME_SCREEN,
+                loop_num=3,
+                conf=self.conf,
+                needle=rock_empty_needle,
+                loop_sleep_range=(100, 600),
+            ).wait_for_needle()
+            if rock_empty is True:
+                log.info("Rock has been mined.")
+                return
+
         raise start.TimeoutException("Timeout waiting for rock to be mined!")
 
     def mine_multiple_rocks(self) -> None:
@@ -393,9 +402,9 @@ class Mining:
         for rocks in self.rocks:
             # Unpack each tuple in the rocks[] list to obtain the "full"
             #   and "empty" versions of each ore.
-            (rock_full, rock_empty) = rocks
+            (rock_full_needle, rock_empty_needle) = rocks
             try:
-                self._mine_rock(rock_full, rock_empty)
+                self._mine_rock(rock_full_needle, rock_empty_needle)
             except start.RockEmpty:
                 pass
             except start.InventoryFull as error:

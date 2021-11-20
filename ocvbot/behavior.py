@@ -16,23 +16,23 @@ from ocvbot import banking
 from ocvbot import inputs
 from ocvbot import interface
 from ocvbot import misc
-from ocvbot import startup
 from ocvbot import startup as start
 from ocvbot import vision as vis
 
 
 # TODO: Move login and world-switcher functions to login_menu.py.
-# TODO: Break out into inventory.py or side_stones.py.
 # TODO: Add switch_worlds_logged_in()
 
 
+# TODO: Add tests.
+# TODO: Move to login_menu.py
 def switch_worlds_logged_out(world: str, attempts=5) -> bool:
     MAX_COLUMNS = 7
     X_OFFSET = 93
     Y_OFFSET = 19
 
     # Get world's row and col
-    world_info = startup.worlds[world]
+    world_info = start.worlds[world]
     column = world_info["column"]
     row = world_info["row"]
 
@@ -99,25 +99,28 @@ def switch_worlds_logged_out(world: str, attempts=5) -> bool:
     return False
 
 
-def check_skills() -> bool:
+# TODO: Move to inventory.py
+def check_skills() -> None:
     """
     Used to mimic human-like behavior. Checks the stats of a random
     skill.
+
+    Returns:
+        Returns after hovering mouse over skill.
 
     """
     open_side_stone("skills")
     inputs.Mouse(region=vis.INV).move_to()
     misc.sleep_rand(1000, 7000)
-    return True
+    return
 
 
+# TODO: Move to inventory.py
 def drop_item(
     item,
-    track: bool = True,
-    wait_chance: int = 120,
-    wait_range: tuple[int, int] = (5000, 20000),
+    random_wait: bool = True,
     shift_click: bool = True,
-) -> bool:
+) -> None:
     """
     Drops all instances of the provided item from the inventory.
     The "Shift+Click" setting to drop items MUST be enabled in the OSRS
@@ -126,54 +129,50 @@ def drop_item(
     Args:
        item (file): Filepath to an image of the item to drop, as it
                     appears in the player's inventory.
-       track (bool): Keep track of the number of items dropped in a
-                     global variable, default is True.
-       wait_chance (int): Chance to wait randomly while dropping item,
-                          see wait_rand()'s docstring for more info,
-                          default is 50.
-       wait_range (tuple): A 2-tuple of the minimum number of miliseconds
-                           to wait and the maximum number of miliseconds
-                           to wait if a wait is triggered, default is
-                           (5000, 20000).
+       random_wait (bool): Whether to roll for a chance to randomly wait
+                           while dropping items. Default is True.
        shift_click (bool): Whether to hold down Shift before clicking the
                            item. This arg only exists because it must be
                            disabled when running unit tests with PyTest and
                            feh -- don't change it unless you know what
                            you're doing. Default is True.
+
+    Examples:
+        drop_item("./needles/items/iron-ore.png")
+
+    Returns:
+        Returns when all instances of the given item have been dropped, or when
+        there were already zero instances of the given item in the inventory.
+
+    Raises:
+        Raises start.InventoryError if not all instances of the given item could
+        be dropped.
     """
     # TODO: Create four objects, one for each quadrant of the inventory
     #   and rotate dropping items randomly among each quadrant to make
     #   item-dropping more randomized.
 
-    # Make sure the inventory tab is selected in the main menu.
     open_side_stone("inventory")
 
-    item_remains = vis.Vision(region=vis.INV, loop_num=1, needle=item).wait_for_needle()
-    if item_remains is False:
-        log.info("Could not find %s", item)
-        return False
-
     number_of_items = vis.Vision(region=vis.INV, needle=item).count_needles()
+    if number_of_items == 0:
+        log.info("No instances of item %s exist in the inventory", item)
+        return
+
     log.info("Dropping %s instances of %s", number_of_items, item)
-    for _ in range(40):
+    for _ in range(35):
 
         if shift_click:
             pag.keyDown("shift")
         # Alternate between searching for the item in left half and the
         #   right half of the player's inventory. This helps reduce the
         #   chances the bot will click on the same item twice.
-        item_on_right = vis.Vision(
-            region=vis.INV_RIGHT_HALF, needle=item, loop_num=1
-        ).click_needle(sleep_range=(10, 50, 10, 50))
-        # TODO: This "track" parameter is for stats. implement stats!
-        if item_on_right is True and track is True:
-            start.items_gathered += 1
-
-        item_on_left = vis.Vision(
-            region=vis.INV_LEFT_HALF, needle=item, loop_num=1
-        ).click_needle(sleep_range=(10, 50, 10, 50))
-        if item_on_left is True and track is True:
-            start.items_gathered += 1
+        vis.Vision(region=vis.INV_RIGHT_HALF, needle=item, loop_num=1).click_needle(
+            sleep_range=(10, 50, 10, 50)
+        )
+        vis.Vision(region=vis.INV_LEFT_HALF, needle=item, loop_num=1).click_needle(
+            sleep_range=(10, 50, 10, 50)
+        )
 
         # Search the entire inventory to check if the item is still
         #   there.
@@ -181,19 +180,16 @@ def drop_item(
             region=vis.INV, loop_num=1, needle=item
         ).wait_for_needle()
 
-        # Chance to briefly wait while dropping items.
-        misc.sleep_rand_roll(
-            chance_range=(wait_chance - 10, wait_chance + 10),
-            sleep_range=(wait_range[0], wait_range[1]),
-        )
+        # Chance to sleep while dropping items.
+        if random_wait:
+            misc.sleep_rand_roll(chance_range=(30, 40), sleep_range=(1000, 20000))
 
         if shift_click:
             pag.keyUp("shift")
         if item_remains is False:
-            return True
+            return
 
-    log.error("Tried dropping item too many times!")
-    return False
+    raise start.InventoryError("Tried dropping item too many times!")
 
 
 def human_behavior_rand(chance) -> None:
@@ -207,9 +203,12 @@ def human_behavior_rand(chance) -> None:
                       parameter is 25, then there is a 1 in 25 chance
                       for the roll to pass.
 
+    Returns:
+        Returns after random human behavior has been completed.
     """
     roll = rand.randint(1, chance)
     log.debug("Human behavior rolled %s", roll)
+
     if roll == chance:
         log.info("Attempting to act human.")
         roll = rand.randint(1, 2)
@@ -233,10 +232,9 @@ def human_behavior_rand(chance) -> None:
                 open_side_stone("friends")
             elif roll == 8:
                 open_side_stone("settings")
-        return
-    return
 
 
+# TODO: Move to login_menu.py
 def login_basic(
     username_file=start.config["main"]["username_file"],
     password_file=start.config["main"]["password_file"],
@@ -318,6 +316,7 @@ def login_basic(
     return False
 
 
+# TODO: Move to login_menu.py
 def login_full(
     login_sleep_range: tuple[int, int] = (500, 5000),
     postlogin_sleep_range: tuple[int, int] = (500, 5000),
@@ -404,7 +403,8 @@ def login_full(
     raise Exception("Unable to login!")
 
 
-def logout() -> bool:
+# TODO: Move to inventory.py
+def logout() -> None:
     """
     If the client is logged in, logs out.
 
@@ -412,73 +412,20 @@ def logout() -> bool:
         Raises an exception if the client could not logout.
 
     Returns:
-        Returns True if the logout was successful.
+        Returns if the logout was successful, or the client is already logged
+        out.
 
     """
     # Make sure the client is logged in.
     if vis.orient()[0] == "logged_out":
         log.warning("Client already logged out!")
-        return True
+        return
 
     log.info("Attempting to logout.")
     banking.close_bank()
     open_side_stone("logout")
 
-    logout_button_world_switcher = False
-    logout_button_highlighted = False
-    logout_button = False
-
-    # TODO: Create a function that looks for multiple needles simultaneously.
-    #   This might even be able to be integrated into the wait_for_needle()
-    #   function with a for-loop.
-    # Look for any of the three possible logout buttons.
-    for _ in range(1, 5):
-        # The standard logout button.
-        logout_button = vis.Vision(
-            region=vis.INV,
-            needle="./needles/side-stones/logout/logout.png",
-            conf=0.9,
-            loop_num=1,
-        ).wait_for_needle(get_tuple=True)
-        if isinstance(logout_button, tuple) is True:
-            # Break out of the loop if any of the buttons was found.
-            break
-
-        # The logout button as it appears when the mouse is over it.
-        logout_button_highlighted = vis.Vision(
-            region=vis.INV,
-            needle="./needles/side-stones/logout/logout-highlighted.png",
-            conf=0.9,
-            loop_num=1,
-        ).wait_for_needle(get_tuple=True)
-        if isinstance(logout_button_highlighted, tuple) is True:
-            logout_button = logout_button_highlighted
-            break
-
-        # The logout button when the world switcher is open.
-        logout_button_world_switcher = vis.Vision(
-            region=vis.SIDE_STONES,
-            needle="./needles/side-stones/logout/logout-world-switcher.png",
-            conf=0.9,
-            loop_num=1,
-        ).wait_for_needle(get_tuple=True)
-        if isinstance(logout_button_world_switcher, tuple) is True:
-            logout_button = logout_button_world_switcher
-            break
-
-    if (
-        logout_button is False
-        and logout_button_highlighted is False
-        and logout_button_world_switcher is False
-    ):
-        raise Exception("Failed to find logout button!")
-
-    # Once a logout button has been found, click on its coordinates
-    #   and wait for the logout to complete.
-    # If a logout is not detected after the first try, keep clicking
-    #   on the location of the detected logout button and try again.
-    inputs.Mouse(region=logout_button).click_coord(move_away=True)
-    for tries in range(5):
+    def is_logged_out() -> bool:
         logged_out = vis.Vision(
             region=vis.CLIENT,
             needle="./needles/login-menu/orient-logged-out.png",
@@ -486,40 +433,69 @@ def logout() -> bool:
             loop_sleep_range=(1000, 1200),
         ).wait_for_needle()
         if logged_out is True:
-            log.info("Logged out after trying %s times(s)", tries)
             return True
-        else:
-            log.info("Unable to log out, trying again.")
-            inputs.Mouse(region=logout_button).click_coord(move_away=True)
+
+    # Look for any one of the three possible logout buttons.
+    for _ in range(5):
+
+        # The standard logout button.
+        logout_button = vis.Vision(
+            region=vis.INV,
+            needle="./needles/side-stones/logout/logout.png",
+            conf=0.9,
+            loop_num=1,
+        ).click_needle(move_away=True)
+        if logout_button is True:
+            if is_logged_out() is True:
+                return
+
+        # The logout button as it appears when the mouse is over it.
+        logout_button_highlighted = vis.Vision(
+            region=vis.INV,
+            needle="./needles/side-stones/logout/logout-highlighted.png",
+            conf=0.9,
+            loop_num=1,
+        ).click_needle(move_away=True)
+        if logout_button_highlighted is True:
+            if is_logged_out() is True:
+                return
+
+        # The logout button when the world switcher is open.
+        logout_button_world_switcher = vis.Vision(
+            region=vis.SIDE_STONES,
+            needle="./needles/side-stones/logout/logout-world-switcher.png",
+            conf=0.95,
+            loop_num=1,
+        ).click_needle(move_away=True)
+        if logout_button_world_switcher is True:
+            if is_logged_out() is True:
+                return
 
     raise Exception("Could not logout!")
 
 
-def logout_break_range() -> bool:
+# TODO: Move to misc.py
+def logout_break_range() -> None:
     """
-    Triggers a random logout within a specific range of times, set
-    by the user in the main config file. Additional configuration for
-    this function is set by variables in startup.py.
+    Triggers a random logout within a specific range of times, set by the user
+    in the main config file. Additional configuration for this function is set
+    by variables in startup.py.
 
-    To determine when a logout roll should occur, this function creates
-    five evenly-spaced timestamps at which to roll for a logout. These
-    timestamps are called "checkpoints" interanally. Each roll has a
-    1/5 chance to pass. The first and last checkpoints are based on the
-    user-defined minimum and maximum session duration. As a result of
-    this, the last checkpoint's roll always has a 100% chance of
-    success.
-    All variables set by this function are reset if a logout roll passes.
+    To determine when a logout roll should occur, this function creates five
+    evenly-spaced timestamps at which to roll for a logout. These timestamps
+    are called "checkpoints". Each roll has a 1/5 chance to pass. The first and
+    last checkpoints are based on the user-defined minimum and maximum session
+    duration. As a result of this, the last checkpoint's roll always has a 100%
+    chance of success. All variables set by this function are reset if a logout
+    roll passes.
 
-    When called, this function checks if an checkpoint's timestamp has
-    passed and hasn't yet been rolled. If true, it rolls for that checkpoint
-    and marks it (so it's not rolled again). If the roll passes, a logout
-    is called and all checkpoints are reset. If the roll fails or a
-    checkpoint's timestamp hasn't yet passed, the function does nothing
-    and returns.
+    When called, this function checks if an checkpoint's timestamp has passed
+    and hasn't yet been rolled. If true, it rolls for that checkpoint and marks
+    it (so it's not rolled again). If the roll passes, a logout is called and
+    all checkpoints are reset. If the roll fails or a checkpoint's timestamp
+    hasn't yet passed, the function does nothing and returns.
 
     """
-    # TODO: There's probably a way to refactor these near-duplicate
-    #   if-statements into a single for-loop.
     current_time = round(time.time())
 
     # If a checkpoint's timestamp has passed, roll for a logout, then set
@@ -540,7 +516,7 @@ def logout_break_range() -> bool:
         logout_break_roll(5)
 
     elif current_time >= start.checkpoint_4 and start.checkpoint_4_checked is False:
-        log.info("Rolling checkpoint 4...")
+        log.info("Rolling for checkpoint 4...")
         start.checkpoint_4_checked = True
         logout_break_roll(5)
 
@@ -566,9 +542,9 @@ def logout_break_range() -> bool:
             log.info("Checkpoint 4 is at %s", time.ctime(start.checkpoint_4))
         elif start.checkpoint_4_checked is True:
             log.info("Checkpoint 5 is at %s", time.ctime(start.checkpoint_5))
-    return True
 
 
+# TODO: Move to misc.py
 def logout_break_roll(
     chance,
     min_break_duration=int(start.config["main"]["min_break_duration"]),
@@ -593,6 +569,11 @@ def logout_break_roll(
     if logout_roll == chance:
         log.info("Random logout called.")
         logout()
+        # Make sure all checkpoints are reset.
+        start.checkpoint_1_checked = False
+        start.checkpoint_2_checked = False
+        start.checkpoint_3_checked = False
+        start.checkpoint_4_checked = False
 
         # Track the number of play sessions that have occurred so far.
         start.session_num += 1
@@ -621,6 +602,7 @@ def logout_break_roll(
         return
 
 
+# TODO: Move to inventory.py
 def open_side_stone(side_stone) -> bool:
     """
     Opens a side stone menu.
