@@ -230,7 +230,7 @@ def enter_bank_pin(pin=(start.config["main"]["bank_pin"])) -> bool:
     return True
 
 
-def open_bank(direction) -> bool:
+def open_bank(direction) -> None:
     """
     Opens the bank. Assumes the player is within 2 empty tiles of a bank booth.
 
@@ -243,16 +243,23 @@ def open_bank(direction) -> bool:
         open_bank("west")
 
     Returns:
-        Returns True if bank was opened successfully or is already open,
-        returns False otherwise
+        Returns if bank was opened successfully or is already open.
+
+    Raises:
+        Raises a ValueError if an invalid direction is given.
+
+        Raises an Exception if the bank could not be opened.
 
     """
+    if direction not in ("north", "south", "east", "west"):
+        raise ValueError("Must provide a cardinal direction to open bank!")
+
     bank_open = vis.Vision(
         region=vis.GAME_SCREEN, needle="./needles/buttons/close.png", loop_num=1
     ).wait_for_needle()
     if bank_open is True:
         log.info("Bank window is already open.")
-        return True
+        return
 
     log.info("Attempting to open bank window.")
     for _ in range(5):
@@ -279,11 +286,10 @@ def open_bank(direction) -> bool:
                 loop_num=10,
             ).wait_for_needle()
             if bank_open is True:
-                return True
+                return
         misc.sleep_rand(1000, 3000)
 
-    log.warning("Unable to open bank!")
-    return False
+    raise Exception("Unable to open bank window!")
 
 
 def withdrawal_item(
@@ -291,7 +297,8 @@ def withdrawal_item(
 ) -> None:
     """
     Withdrawals an item from the bank. Assumes the bank window is open and
-    the item to withdrawal is visible.
+    the item to withdrawal is visible. Does NOT check if the correct
+    quantity is withdrawn.
 
     Args:
         item_bank (str): Filepath to an image of the item to withdrawal as it
@@ -309,18 +316,23 @@ def withdrawal_item(
                         conf=0.98)
 
     Returns:
-        Returns True if the item was successfully withdrawn from bank,
-        returns False otherwise.
+        Returns if the item was successfully withdrawn from bank,
+
+    Raises:
+        Raises start.BankingError if item could not be withdrawn.
 
     """
     log.info("Attempting to withdrawal item: %s", item_bank)
     try:
-        # Ensure the correct quantity is withdrawn.
-        bank_settings_check("quantity", str(quantity))
+
         # Make sure no placeholders are left behind, as this makes image
         #   matching much more difficult -- placeholders look very similar
         #   to regular "real" items.
         bank_settings_check("placeholder", "unset")
+
+        # Ensure the correct quantity is withdrawn.
+        bank_settings_check("quantity", str(quantity))
+
         interface.enable_button(
             button_disabled=item_bank,
             button_disabled_region=vis.BANK_ITEMS_WINDOW,
@@ -329,5 +341,6 @@ def withdrawal_item(
             loop_num=10,
             conf=conf,
         )
+
     except Exception as error:
-        raise Exception("Could not withdrawal item!") from error
+        raise start.BankingError("Could not withdrawal item!") from error

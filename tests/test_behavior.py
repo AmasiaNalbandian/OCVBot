@@ -16,6 +16,7 @@ pass
 
 # OCVBot modules must be imported after init_tests.
 from ocvbot import behavior
+from ocvbot import startup as start
 
 image_directory = (os.path.dirname(__file__)) + "/test_behavior/"
 
@@ -36,15 +37,33 @@ def test_check_skills_pass(params) -> None:
 
 # DROP_ITEM ---------------------------------------------------------------------------------------
 
-drop_item_pass_params = (("./needles/items/iron-ore.png", "01"),)
+drop_item_pass_params = (
+    # Must open side stone first.
+    ("./needles/items/iron-ore.png", "01"),
+    # No items exist in inventory.
+    ("./needles/items/iron-ore.png", "02"),
+)
 
 
 @pytest.mark.parametrize("params", drop_item_pass_params)
 def test_drop_item_pass(params) -> None:
     item, test_number = params
     init_tests.feh("drop_item", "pass", test_number, image_directory)
-    result = behavior.drop_item(item=item, shift_click=False)
-    assert result is True
+    result = behavior.drop_item(item=item, random_wait=False, shift_click=False)
+    assert result is None
+    init_tests.kill_feh()
+
+
+# Try dropping item too many times.
+drop_item_fail_params = (("./needles/items/iron-ore.png", "01"),)
+
+
+@pytest.mark.parametrize("params", drop_item_fail_params)
+def test_drop_item_fail(params) -> None:
+    item, test_number = params
+    init_tests.feh("drop_item", "fail", test_number, image_directory)
+    with pytest.raises(start.InventoryError, match="Tried dropping item too many"):
+        behavior.drop_item(item=item, random_wait=False, shift_click=False)
     init_tests.kill_feh()
 
 
@@ -56,6 +75,7 @@ logout_pass_params = (
     "03",  # Logout tab is already open, world switcher open.
     "04",  # Already logged out
     "05",  # Attack tab is open, switching tabs doesn't work at first.
+    "06",  # Must click logout button multiple times.
 )
 
 
@@ -64,20 +84,21 @@ def test_logout_pass(params) -> None:
     test_number = params
     init_tests.feh("logout", "pass", test_number, image_directory)
     result = behavior.logout()
-    assert result is True
+    assert result is None
     init_tests.kill_feh()
 
 
-logout_fail_params = ("01",)  # Unable to find the logout button.
+# Try too many times to click on logout button.
+logout_fail_params = ("01",)
 
 
 @pytest.mark.parametrize("params", logout_fail_params)
 def test_logout_fail(params) -> None:
     test_number = params
     init_tests.feh("logout", "fail", test_number, image_directory)
-    with pytest.raises(Exception, match=".*"):
+    with pytest.raises(Exception, match="Could not logout"):
         behavior.logout()
-        init_tests.kill_feh()
+    init_tests.kill_feh()
 
 
 # OPEN SIDE STONE ---------------------------------------------------------------------------------

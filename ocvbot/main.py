@@ -2,7 +2,7 @@
 """
 Module for invoking main bot scripts.
 
-Most main scripts define a preset list of `scenarios` from which the user
+Most main scripts define a preset list of `scenarios`, which the user
 must choose from. Each scenario has a predetermined configuration that will
 used for training that skill. For example, the `varrock-east-mine` scenario
 for the `miner` script is configured to only mine two specific iron rocks
@@ -13,19 +13,21 @@ See `docs/scenarios/` for the required client configuration settings in
 each scenario.
 
 """
+import glob
 import logging as log
 import os
 import pathlib
 import random as rand
 import sys
+import traceback
 
 # Global TODOs:
 # TODO: Transition to use proper exceptions rather than checking for a False return value.
 
+# TODO: See if these statements are really necessary since they're in init.py
 # Make sure the program's working directory is the directory in which
 #   this file is located.
 os.chdir(os.path.dirname(__file__))
-
 # Ensure ocvbot files are added to sys.path.
 SCRIPTPATH = str(pathlib.Path(__file__).parent.parent.absolute())
 sys.path.insert(1, SCRIPTPATH)
@@ -143,11 +145,11 @@ def miner(scenario: str, loops: int = 10000) -> None:
     for _ in range(loops):
         try:
             mining.mine_multiple_rocks()
-            misc.sleep_rand_roll(chance_range=(90, 100))
+            misc.sleep_rand_roll(chance_range=(200, 300))
         except start.TimeoutException:
-            misc.sleep_rand_roll()
+            misc.sleep_rand_roll(chance_range=(50, 60))
         except start.InventoryFull:
-            misc.sleep_rand_roll()
+            misc.sleep_rand_roll(chance_range=(50, 60), sleep_range=(1000, 120000))
             if drop_ore_config is True:
                 mining.drop_inv_ore()
             else:
@@ -196,19 +198,26 @@ def alchemist(alch_item_type, loops: int = 10000) -> None:
 
     behavior.open_side_stone("spellbook")
     for _ in range(loops):
-        skills.Magic(
-            spell=spell,
-            target=target,
-            inventory=True,
-            conf=0.5,
-            region=vis.INV_LEFT_HALF,
-            move_duration_range=(0, 200),
-        ).cast_spell()
-        misc.sleep_rand_roll(chance_range=(10, 20), sleep_range=(100, 10000))
+        try:
+            skills.Magic(
+                spell=spell,
+                target=target,
+                inventory=True,
+                conf=0.5,
+                region=vis.INV_LEFT_HALF,
+                move_duration_range=(0, 200),
+            ).cast_spell()
+            misc.sleep_rand_roll(chance_range=(10, 20), sleep_range=(100, 10000))
 
-        # Every once in a while, print the amount of time the bot has been running.
-        if rand.randint(1, 50) == 50:
-            misc.session_duration(human_readable=True)
+            # Every once in a while, print the amount of time the bot has been running.
+            # Also roll for randomized logout.
+            if rand.randint(1, 50) == 50:
+                misc.session_duration(human_readable=True)
+                behavior.logout_break_range()
+
+        # This will occur when we're out of runes or out of items to alch.
+        except start.NeedleError as error:
+            raise error
 
 
 def spellcaster(scenario: str, loops: int = 10000) -> None:
@@ -246,11 +255,13 @@ def spellcaster(scenario: str, loops: int = 10000) -> None:
         misc.sleep_rand_roll(chance_range=(10, 20), sleep_range=(100, 10000))
 
         # Every once in a while, print the amount of time the bot has been running.
+        # Also roll for randomized logout.
         if rand.randint(1, 50) == 50:
             misc.session_duration(human_readable=True)
+            behavior.logout_break_range()
 
 
-def chef(item: str, location: str, loops: int = 10000) -> bool:
+def chef(item: str, location: str, loops: int = 10000) -> None:
     """
     Cooks a given item at a given location.
 
@@ -272,8 +283,7 @@ def chef(item: str, location: str, loops: int = 10000) -> bool:
         # Assumes starting location is the bank.
         banking.open_bank("west")
     else:
-        log.critical("Unsupported value for location!")
-        raise RuntimeError("Unsupported value for location!")
+        raise ValueError("Unsupported value for location!")
 
     log.info("Launching chef script with item %s and location %s.", item, location)
     # Must have staff of water equipped!
@@ -284,22 +294,30 @@ def chef(item: str, location: str, loops: int = 10000) -> bool:
     item_bank = "./needles/items/" + item + "-bank.png"
 
     for _ in range(loops):
-        # Conf is higher than default because raw food looks very
-        #   similar to cooked food.
-        banking.withdrawal_item(item_bank=item_bank, item_inv=item_inv, conf=0.99)
-        log.info("Withdrawing raw food.")
-        misc.sleep_rand_roll(chance_range=(10, 20), sleep_range=(100, 10000))
-        # Go to range.
-        behavior.travel(range_coords, haystack_map)
-        # Cook food.
-        skills.Cooking(item_inv, item_bank, heat_source).cook_item()
-        # Go back to bank and deposit cooked food.
-        behavior.travel(bank_coords, haystack_map)
-        banking.open_bank("west")
-        misc.sleep_rand_roll(chance_range=(10, 20), sleep_range=(100, 10000))
-        banking.deposit_inventory()
-        misc.session_duration(human_readable=True)
-    return True
+        try:
+            # Conf is higher than default because raw food looks very
+            #   similar to cooked food.
+            banking.withdrawal_item(item_bank=item_bank, item_inv=item_inv, conf=0.99)
+            log.info("Withdrawing raw food.")
+            misc.sleep_rand_roll(chance_range=(10, 20), sleep_range=(100, 10000))
+            # Go to range.
+            behavior.travel(range_coords, haystack_map)
+            # Cook food.
+            skills.Cooking(item_inv, item_bank, heat_source).cook_item()
+            # Go back to bank and deposit cooked food.
+            behavior.travel(bank_coords, haystack_map)
+            banking.open_bank("west")
+            misc.sleep_rand_roll(chance_range=(10, 20), sleep_range=(100, 10000))
+            banking.deposit_inventory()
+            # Roll for randomized logout.
+            behavior.logout_break_range()
+            misc.session_duration(human_readable=True)
+
+        except Exception:
+            print(traceback.format_exc())
+            behavior.logout()
+            return
+    return
 
 
 def smith(bar: str, item: str, location: str, loops: int = 10000):
@@ -379,6 +397,8 @@ def smith(bar: str, item: str, location: str, loops: int = 10000):
         misc.sleep_rand_roll(chance_range=(20, 30))
         behavior.travel(bank_coords, haystack_map)
         misc.session_duration(human_readable=True)
+        # Roll for randomized logout.
+        behavior.logout_break_range()
         misc.sleep_rand_roll(chance_range=(20, 30))
 
 def woodcut(loops: int = 10000):
@@ -402,6 +422,18 @@ def test():
 
 
 
+def cleanup():
+    """
+    Cleans up leftover screenshots created by PyAutoGUI.
+    """
+    glob_string = ".screenshot2*[0-9][0-9][0-9][0-9][0-9][0-9].png"
+    for filepath in glob.glob(glob_string):
+        os.remove(filepath)
+
+
+# TODO: Add basic firemaking script that starts at a bank booth and
+#   creates 27 fires, all in a straight line, then returns to the booth.
+
 
     # TODO: Add basic firemaking script that starts at a bank booth and
     #   creates 27 fires, all in a straight line, then returns to the booth.
@@ -421,6 +453,7 @@ def main():
     Calls the main botting script defined in the config file.
 
     """
+    cleanup()
     vis.init()
 
     if script == "mining":
@@ -456,6 +489,7 @@ def main():
         log.critical("Unknown value provided for 'script' key in config file!")
         raise RuntimeError("Unknown value provided for 'script' key in config file!")
 
+    cleanup()
     sys.exit(0)
 
 

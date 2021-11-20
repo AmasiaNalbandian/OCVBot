@@ -43,21 +43,41 @@ def test_bank_settings_check_pass(params):
     assert result is None
 
 
-bank_settings_check_fail_params = (("note", "all", "00"),)
+# Test unsupported function arguments.
+bank_settings_check_fail_01_params = (
+    ("note", "all"),  # Try setting a non-existent setting.
+    ("quantity", "100"),  # Try setting a non-existent value.
+    ("placeholder", "enabled"),  # Try setting a non-existent value.
+)
 
 
-@pytest.mark.parametrize("params", bank_settings_check_fail_params)
-def test_bank_settings_check_fail(params):
+@pytest.mark.parametrize("params", bank_settings_check_fail_01_params)
+def test_bank_settings_check_fail_01(params):
+    setting, value = params
+    with pytest.raises(Exception, match="Unsupported"):
+        banking.bank_settings_check(setting, value)
+    init_tests.kill_feh()
+
+
+# Test failure due to too many attempts.
+bank_settings_check_fail_02_params = (("quantity", "10", "01"),)  # Try too many times.
+
+
+@pytest.mark.parametrize("params", bank_settings_check_fail_02_params)
+def test_bank_settings_check_fail_02(params) -> None:
     setting, value, test_number = params
     init_tests.feh("bank_settings_check", "fail", test_number, image_directory)
-    with pytest.raises(Exception, match="Could not set bank setting|Unsupported"):
+    with pytest.raises(Exception, match="Could not set bank setting"):
         banking.bank_settings_check(setting, value)
     init_tests.kill_feh()
 
 
 # CLOSE BANK --------------------------------------------------------------------------------------
 
-close_bank_pass_params = ("01",)
+close_bank_pass_params = (
+    "01",  # Must try 2 times.
+    "02",  # Bank already closed.
+)
 
 
 @pytest.mark.parametrize("params", close_bank_pass_params)
@@ -69,7 +89,7 @@ def test_close_bank_pass(params) -> None:
     init_tests.kill_feh()
 
 
-close_bank_fail_params = ("01",)
+close_bank_fail_params = ("01",)  # Try too many times
 
 
 @pytest.mark.parametrize("params", close_bank_fail_params)
@@ -83,7 +103,7 @@ def test_close_bank_fail(params) -> None:
 
 # DEPOSIT_INVENTORY -------------------------------------------------------------------------------
 
-deposit_inventory_pass_params = (("01"),)
+deposit_inventory_pass_params = (("01"),)  # Must try 3 times.
 
 
 @pytest.mark.parametrize("params", deposit_inventory_pass_params)
@@ -95,7 +115,7 @@ def test_deposit_inventory_pass(params):
     init_tests.kill_feh()
 
 
-deposit_inventory_fail_params = (("01"),)
+deposit_inventory_fail_params = (("01"),)  # Try too many times.
 
 
 @pytest.mark.parametrize("params", deposit_inventory_fail_params)
@@ -110,10 +130,10 @@ def test_deposit_inventory_fail(params) -> None:
 # DEPOSIT_ITEM ------------------------------------------------------------------------------------
 
 deposit_item_pass_params = (
-    ("./needles/items/raw-anchovies.png", "all", "01"),
-    ("./needles/items/iron-ore.png", "10", "02"),
-    ("./needles/items/iron-ore.png", "5", "03"),
-    ("./needles/items/iron-ore.png", "1", "04"),
+    ("./needles/items/raw-anchovies.png", "all", "01"),  # Must try 2 times.
+    ("./needles/items/iron-ore.png", "10", "02"),  # Must set quantity first.
+    ("./needles/items/iron-ore.png", "5", "03"),  # Must set quantity first.
+    ("./needles/items/iron-ore.png", "1", "04"),  # Must set quantity first.
     ("./needles/items/iron-ore.png", "1", "05"),  # No items to deposit.
 )
 
@@ -127,14 +147,41 @@ def test_deposit_item_pass(params):
     init_tests.kill_feh()
 
 
-deposit_item_fail_params = (("./needles/items/iron-ore.png", "10", "01"),)
+# Deposit too many times.
+deposit_item_fail_01_params = (("./needles/items/iron-ore.png", "10", "01"),)
 
 
-@pytest.mark.parametrize("params", deposit_item_fail_params)
-def test_deposit_item_fail(params) -> None:
+@pytest.mark.parametrize("params", deposit_item_fail_01_params)
+def test_deposit_item_fail_01(params) -> None:
     item, quantity, test_number = params
     init_tests.feh("deposit_item", "fail", test_number, image_directory)
     with pytest.raises(start.BankingError, match="Deposited too many items"):
+        banking.deposit_item(item, quantity)
+    init_tests.kill_feh()
+
+
+# Deposit unsupported quantity.
+deposit_item_fail_02_params = (("./needles/items/iron-ore.png", "100", "02"),)
+
+
+@pytest.mark.parametrize("params", deposit_item_fail_02_params)
+def test_deposit_item_fail_02(params) -> None:
+    item, quantity, test_number = params
+    init_tests.feh("deposit_item", "fail", test_number, image_directory)
+    with pytest.raises(ValueError, match="Unsupported value for quantity"):
+        banking.deposit_item(item, quantity)
+    init_tests.kill_feh()
+
+
+# Try too many times.
+deposit_item_fail_03_params = (("./needles/items/iron-ore.png", "all", "03"),)
+
+
+@pytest.mark.parametrize("params", deposit_item_fail_03_params)
+def test_deposit_item_fail_03(params) -> None:
+    item, quantity, test_number = params
+    init_tests.feh("deposit_item", "fail", test_number, image_directory)
+    with pytest.raises(start.BankingError, match="Could not deposit items"):
         banking.deposit_item(item, quantity)
     init_tests.kill_feh()
 
@@ -147,6 +194,7 @@ open_bank_pass_params = (
     ("west", "03"),  # 1 tile west.
     ("west", "04"),  # 2 tiles west.
     ("east", "05"),  # 1 tile east.
+    ("east", "07"),  # Bank window already open.
 )
 
 
@@ -155,7 +203,32 @@ def test_open_bank_pass(params):
     direction, test_number = params
     init_tests.feh("open_bank", "pass", test_number, image_directory)
     result = banking.open_bank(direction)
-    assert result is True
+    assert result is None
+    init_tests.kill_feh()
+
+
+# Provide an invalid direction.
+open_bank_fail_01_params = (("not_a_valid_direction"),)
+
+
+@pytest.mark.parametrize("params", open_bank_fail_01_params)
+def test_open_bank_fail_01(params) -> None:
+    direction = params
+    with pytest.raises(ValueError, match="Must provide a cardinal direction"):
+        banking.open_bank(direction)
+    init_tests.kill_feh()
+
+
+# Unable to open bank window.
+open_bank_fail_02_params = (("east", "01"),)
+
+
+@pytest.mark.parametrize("params", open_bank_fail_02_params)
+def test_open_bank_fail_02(params) -> None:
+    direction, test_number = params
+    init_tests.feh("open_bank", "fail", test_number, image_directory)
+    with pytest.raises(Exception, match="Unable to open bank"):
+        banking.open_bank(direction)
     init_tests.kill_feh()
 
 
@@ -169,6 +242,14 @@ withdrawal_item_pass_params = (
         "all",
         "01",
     ),
+    # Must set quantity and try 2 times.
+    (
+        "./needles/items/raw-anchovies-bank.png",
+        "./needles/items/raw-anchovies.png",
+        0.95,
+        "10",
+        "02",
+    ),
 )
 
 
@@ -181,6 +262,7 @@ def test_withdrawal_item_pass(params):
     init_tests.kill_feh()
 
 
+# Try too many times to withdrawal item.
 withdrawal_item_fail_params = (
     (
         "./needles/items/raw-anchovies-bank.png",
@@ -196,6 +278,6 @@ withdrawal_item_fail_params = (
 def test_withdrawal_item_fail(params) -> None:
     item_bank, item_inv, conf, quantity, test_number = params
     init_tests.feh("withdrawal_item", "fail", test_number, image_directory)
-    with pytest.raises(Exception, match="Could not withdrawal item"):
+    with pytest.raises(start.BankingError, match="Could not withdrawal item"):
         banking.withdrawal_item(item_bank, item_inv, conf, quantity)
     init_tests.kill_feh()
